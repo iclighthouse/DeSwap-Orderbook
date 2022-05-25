@@ -71,7 +71,7 @@ These two quantities are also called the **top of the book** since they are the 
 
 The difference of the best bid and ask is called the **spread** or **slippage**: 7.60 - 7.59 = 0.01. The spread is proportional to what would pay if you were to buy a small quantity of ICP and sell it again immediately. You can think of it as a fee you are paying for transacting in the market. The spread is one of the most important quantities of a market and is typically used as a measure of liquidity. 
 
-**Unit size**, also known as **lot size**, defines the quantity of token0 (base token) of bid and ask orders, which must be an integer multiple of the unit size. It is set by the exchange. For example, the unit size is 0.01 ICP (1000000 e8s). This means that you can place orders in quantities like 10.01 and 10.02, but not 10.015.
+**Unit size**, also known as **lot size**, defines the quantity of token0 (base token) that MUST be an integer multiple of the unit size for bid and ask orders. It is set by the exchange. For example, the unit size is 0.01 ICP (1000000 e8s). This means that you can place orders in quantities like 10.01 and 10.02, but not 10.015.
 
 
 ### Order Types
