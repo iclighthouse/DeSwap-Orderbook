@@ -115,7 +115,7 @@ When you place an order that goes on the order book partially or fully, such as 
 These orders add volume to the order book, help to make the market, and are therefore termed makers for any subsequent trades.
 * Takers  
 When you place an order that trades immediately before going on the order book, you are a taker. This is regardless of whether you partially or fully fulfill the order.
-Trades from market orders are always takers, as market orders never go on the order book. These trades are "taking" volume off the order book, and therefore are taker trades. FOK orders are also always takers orders.
+Trades from MKT orders are always takers, as market orders never go on the order book. These trades are "taking" volume off the order book, and therefore are taker trades. FAK and FOK orders are also always takers orders.
 
 
 ## Implementations
