@@ -120,4 +120,24 @@ Trades from MKT orders are always takers, as market orders never go on the order
 
 ## Implementations
 
-See Example.
+Module src (v0.2): /src/OrderBook.mo
+
+**Example:**
+
+```
+import OrderBook "./lib/OrderBook";
+
+actor class{
+    private stable var deswap_orderBook: OrderBook.OrderBook = OrderBook.create();
+    
+    public func trade(){
+        // ....
+        // returns {ob: OrderBook; filled: [OrderFilled]; remaining: OrderPrice; isPending: Bool; fillPrice: ?OrderPrice}
+        let res = OrderBook.trade(deswap_orderBook, _txid, _order, _orderType, _UNIT_SIZE);
+        deswap_orderBook := res.ob; 
+        // ....
+    };
+};
+```
+
+
