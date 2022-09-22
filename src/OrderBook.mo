@@ -1,8 +1,8 @@
 /**
- * Module     : OrderBook.mo v0.2 alpha
+ * Module     : OrderBook.mo 0.5 beta
  * Author     : ICLighthouse Team
  * Stability  : Experimental
- * Description: OrderBook Manager.
+ * Description: An Order Matching Engine Module for Dex in Motoko.
  * Refers     : https://github.com/iclighthouse/
  */
 import Nat "mo:base/Nat";
@@ -33,7 +33,7 @@ module {
     public type OrderPrice = { quantity: {#Buy: (quantity: Nat, amount: Nat); #Sell: Nat; }; price: Nat; };
     public type PriceResponse = { quantity: Nat; price: Nat; };
     public type Tick = { bestAsk: PriceResponse; bestBid: PriceResponse };
-    public type OrderFilled = {counterparty: Txid; token0Value: BalanceChange; token1Value: BalanceChange };
+    public type OrderFilled = {counterparty: Txid; token0Value: BalanceChange; token1Value: BalanceChange; time: Time.Time };
     public type OrderBook = { ask: List.List<(Txid, OrderPrice)>;  bid: List.List<(Txid, OrderPrice)>};
     //public type OrderBookResponse = { ask: List.List<(Txid, PriceResponse)>;  bid: List.List<(Txid, PriceResponse)>};
     public let NumberCachedBars: Nat = 1440;
@@ -112,7 +112,7 @@ module {
             return _priceResponse(t);
         });
     };
-    private func _fill(_ob: OrderBook, _orderPrice: OrderPrice, _filled: [OrderFilled], _UNIT_SIZE: Nat) : (ob: OrderBook, filled: [OrderFilled], remaining: OrderPrice, fillPrice: ?OrderPrice){
+    private func _fill(_ob: OrderBook, _orderPrice: OrderPrice, _filled: [OrderFilled], _UNIT_SIZE: Nat, _lastPrice: ?OrderPrice) : (ob: OrderBook, filled: [OrderFilled], remaining: OrderPrice, fillPrice: ?OrderPrice){
         if (side(_orderPrice) == #Sell and quantity(_orderPrice) == 0) {  
             return (_ob, _filled, _orderPrice, null); 
         }else if (side(_orderPrice) == #Buy and amount(_orderPrice) == 0) {  
@@ -120,7 +120,7 @@ module {
         };
         var filled: [OrderFilled] = _filled;
         var remaining: OrderPrice = _orderPrice;
-        var fillPrice: ?OrderPrice = null;
+        var fillPrice: ?OrderPrice = _lastPrice;
         switch(side(remaining)){
             case(#Buy){
                 var ask = _ob.ask;
@@ -131,13 +131,15 @@ module {
                             if (quantity(remaining) > quantity(orderPrice)){
                                 let _quantity = quantity(orderPrice);
                                 let _amount = quantity(orderPrice) * orderPrice.price / _UNIT_SIZE;
+                                fillPrice := ?{ quantity = #Buy((_quantity, _amount)); price = orderPrice.price; };
                                 remaining := setQuantity(remaining, quantity(remaining) - _quantity, ?(amount(remaining) - _amount)); 
                                 filled := arrayAppend(filled, [{
                                     counterparty = txid; 
                                     token0Value = #CreditRecord(_quantity); 
-                                    token1Value = #DebitRecord(_amount) }]);
+                                    token1Value = #DebitRecord(_amount); 
+                                    time = Time.now()}]);
                                 ask := item.1;
-                                return _fill({ask=ask; bid=_ob.bid}, remaining, filled, _UNIT_SIZE);
+                                return _fill({ask=ask; bid=_ob.bid}, remaining, filled, _UNIT_SIZE, fillPrice);
                             } else if (quantity(remaining) <= quantity(orderPrice) and quantity(remaining) >= _UNIT_SIZE){
                                 let _quantity = quantity(remaining);
                                 let _amount = quantity(remaining) * orderPrice.price / _UNIT_SIZE;
@@ -146,7 +148,8 @@ module {
                                 filled := arrayAppend(filled, [{
                                     counterparty = txid; 
                                     token0Value = #CreditRecord(_quantity); 
-                                    token1Value = #DebitRecord(_amount) }]);
+                                    token1Value = #DebitRecord(_amount); 
+                                    time = Time.now()}]);
                                 let orderPriceNew = setQuantity(orderPrice, quantity(orderPrice) - _quantity, null); 
                                 ask := item.1;
                                 if (quantity(orderPriceNew) >= _UNIT_SIZE){ // Otherwise, dropped.
@@ -161,13 +164,15 @@ module {
                             if (amount(remaining) >= bookAskAmount){
                                 let _quantity = quantity(orderPrice);
                                 let _amount = bookAskAmount;
+                                fillPrice := ?{ quantity = #Buy((_quantity, _amount)); price = orderPrice.price; };
                                 remaining := setQuantity(remaining, 0, ?(amount(remaining) - _amount)); 
                                 filled := arrayAppend(filled, [{
                                     counterparty = txid; 
                                     token0Value = #CreditRecord(_quantity); 
-                                    token1Value = #DebitRecord(_amount) }]);
+                                    token1Value = #DebitRecord(_amount); 
+                                    time = Time.now()}]);
                                 ask := item.1;
-                                return _fill({ask=ask; bid=_ob.bid}, remaining, filled, _UNIT_SIZE);
+                                return _fill({ask=ask; bid=_ob.bid}, remaining, filled, _UNIT_SIZE, fillPrice);
                             } else if (amount(remaining) <= bookAskAmount and amount(remaining) * _UNIT_SIZE / orderPrice.price >= _UNIT_SIZE){
                                 let _quantity = adjustFlooring(amount(remaining) * _UNIT_SIZE / orderPrice.price, _UNIT_SIZE);
                                 let _amount = _quantity * orderPrice.price / _UNIT_SIZE;
@@ -176,7 +181,8 @@ module {
                                 filled := arrayAppend(filled, [{
                                     counterparty = txid; 
                                     token0Value = #CreditRecord(_quantity); 
-                                    token1Value = #DebitRecord(_amount) }]);
+                                    token1Value = #DebitRecord(_amount); 
+                                    time = Time.now()}]);
                                 let orderPriceNew = setQuantity(orderPrice, quantity(orderPrice) - _quantity, null); 
                                 ask := item.1;
                                 if (quantity(orderPriceNew) >= _UNIT_SIZE){ // Otherwise, dropped.
@@ -202,13 +208,15 @@ module {
                             if (quantity(remaining) > quantity(orderPrice)){
                                 let _quantity = quantity(orderPrice);
                                 let _amount = quantity(orderPrice) * orderPrice.price / _UNIT_SIZE;
+                                fillPrice := ?{ quantity = #Sell(_quantity); price = orderPrice.price; };
                                 remaining := setQuantity(remaining, quantity(remaining) - _quantity, null); 
                                 filled := arrayAppend(filled, [{
                                     counterparty = txid; 
                                     token0Value = #DebitRecord(_quantity); 
-                                    token1Value = #CreditRecord(_amount) }]);
+                                    token1Value = #CreditRecord(_amount); 
+                                    time = Time.now()}]);
                                 bid := item.1;
-                                return _fill({ask=_ob.ask; bid=bid}, remaining, filled, _UNIT_SIZE);
+                                return _fill({ask=_ob.ask; bid=bid}, remaining, filled, _UNIT_SIZE, fillPrice);
                             } else if (quantity(remaining) <= quantity(orderPrice) and quantity(remaining) >= _UNIT_SIZE){
                                 let _quantity = quantity(remaining);
                                 let _amount = quantity(remaining) * orderPrice.price / _UNIT_SIZE;
@@ -217,7 +225,8 @@ module {
                                 filled := arrayAppend(filled, [{
                                     counterparty = txid; 
                                     token0Value = #DebitRecord(_quantity); 
-                                    token1Value = #CreditRecord(_amount) }]);
+                                    token1Value = #CreditRecord(_amount); 
+                                    time = Time.now()}]);
                                 let orderPriceNew = setQuantity(orderPrice, quantity(orderPrice) - _quantity, ?(amount(orderPrice) - _amount)); 
                                 bid := item.1;
                                 if (quantity(orderPriceNew) >= _UNIT_SIZE){
@@ -379,7 +388,7 @@ module {
         };
         // fill
         var _filled: [OrderFilled] = [];
-        let (ob_, filled_, remaining_, fillPrice_) = _fill(_ob, _orderPrice, _filled, _UNIT_SIZE);
+        let (ob_, filled_, remaining_, fillPrice_) = _fill(_ob, _orderPrice, _filled, _UNIT_SIZE, null);
         // put
         var ob = ob_;
         var filled = filled_;
@@ -448,6 +457,82 @@ module {
         };
     };
 
-    
+    /// KLine: create
+    public func createK() : KLines{
+        return Trie.empty(); 
+    };
+    public func putK(_kl: KLines, _ki: KInterval, _price: Nat, _vol: Nat): KLines{
+        let kid = _now() / _ki;
+        var kl = _kl;
+        switch(Trie.get(kl, keyn(_ki), Nat.equal)){
+            case(?(kline)){
+                var klineData = kline;
+                switch(Deque.popFront(klineData)){
+                    case(?(kbar, klineTemp)){
+                        if (kid > kbar.kid){ // new kbar
+                            klineData := Deque.pushFront(klineData, {kid = kid; open = _price; high = _price; low = _price; close = _price; vol = _vol; updatedTs = _now()});
+                        }else if (kid == kbar.kid){ // update
+                            klineData := Deque.pushFront(klineTemp, {kid = kid; open = kbar.open; high = Nat.max(kbar.high, _price); low = Nat.min(kbar.low, _price); close = _price; vol = kbar.vol + _vol; updatedTs = _now()});
+                        }else{
+                            // History bar cannot be modified.
+                        };
+                    };
+                    case(_){ // new kbar
+                        klineData := Deque.pushFront(klineData, {kid = kid; open = _price; high = _price; low = _price; close = _price; vol = _vol; updatedTs = _now()});
+                    };
+                };
+                if (List.size(klineData.0) + List.size(klineData.1) > NumberCachedBars){
+                    switch(Deque.popBack(klineData)){
+                        case(?(klineNew, item)){ klineData := klineNew; };
+                        case(_){};
+                    };
+                };
+                kl := Trie.put(kl, keyn(_ki), Nat.equal, klineData).0;
+            };
+            case(_){ // new kbar
+                var klineData: Deque.Deque<KBar> = Deque.empty();
+                klineData := Deque.pushFront(klineData, {kid = kid; open = _price; high = _price; low = _price; close = _price; vol = _vol; updatedTs = _now()});
+                kl := Trie.put(kl, keyn(_ki), Nat.equal, klineData).0;
+            };
+        };
+        return kl;
+    };
+    /// KLine: putBatch
+    public func putBatch(_kl: KLines, _filled: [OrderFilled], _UNIT_SIZE: Nat) : KLines {
+        var kl = _kl;
+        for (item in _filled.vals()){
+            var quantity : Nat = 0;
+            var amount : Nat = 0;
+            switch(item.token0Value){
+                case(#DebitRecord(v)){ quantity := v; };
+                case(#CreditRecord(v)){ quantity := v; };
+                case(_){};
+            };
+            switch(item.token1Value){
+                case(#DebitRecord(v)){ amount := v; };
+                case(#CreditRecord(v)){ amount := v; };
+                case(_){};
+            };
+            if (quantity > 0){
+                let price = amount * _UNIT_SIZE / quantity;
+                kl := putK(kl, 60, price, quantity); // 1min
+                kl := putK(kl, 60*5, price, quantity); // 5mins
+                kl := putK(kl, 3600, price, quantity); // 1h
+                kl := putK(kl, 3600*24, price, quantity); // 1d
+                kl := putK(kl, 3600*24*7, price, quantity); // 1w
+                kl := putK(kl, 3600*24*30, price, quantity); // 1m
+            };
+        };
+        return kl;
+    };
+    /// KLine: get
+    public func getK(_kl: KLines, _ki: KInterval) : [KBar]{
+        switch(Trie.get(_kl, keyn(_ki), Nat.equal)){
+            case(?(kline)){
+                return arrayAppend(List.toArray(kline.0), List.toArray(List.reverse(kline.1)));
+            };
+            case(_){ return []; };
+        };
+    };
 
 };
